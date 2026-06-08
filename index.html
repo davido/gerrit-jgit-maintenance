@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JGit Servlet-4 Divergence — Four Maintenance Options Compared</title>
+<meta name="description" content="A maintainer's perspective on four approaches to bridging Gerrit stable-3.13 against JGit stable-7.4: build-time patches, fork SHA, bzlmod backport, and upstream maintenance branches.">
+<meta name="author" content="David Ostrovsky">
+<meta property="og:title" content="JGit Servlet-4 Divergence — Four Maintenance Options Compared">
+<meta property="og:description" content="A Gerrit & JGit maintainer's ranked assessment of four approaches to bridging Gerrit stable-3.13 against JGit stable-7.4.">
+<meta property="og:type" content="article">
+<meta property="article:author" content="David Ostrovsky">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg-elevated: #131a2e;
+    --bg-card: #1a2240;
+    --bg-card-hover: #1f2849;
+    --border: #2a3357;
+    --border-soft: #1f2849;
+    --text: #e8ecf4;
+    --text-muted: #9aa4be;
+    --text-dim: #6b7494;
+    --accent: #22d3ee;
+    --accent-soft: rgba(34, 211, 238, 0.1);
+    --accent-glow: rgba(34, 211, 238, 0.3);
+    --gold: #fbbf24;
+    --silver: #cbd5e1;
+    --bronze: #d97706;
+    --red: #ef4444;
+    --green: #10b981;
+    --purple: #a78bfa;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    background-image:
+      radial-gradient(at 20% 0%, rgba(34, 211, 238, 0.05) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, rgba(167, 139, 250, 0.04) 0px, transparent 50%);
+    background-attachment: fixed;
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ============ HERO ============ */
+  .hero {
+    text-align: center;
+    padding: 80px 24px 60px;
+    border-bottom: 1px solid var(--border-soft);
+    position: relative;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .hero-eyebrow {
+    display: inline-block;
+    font-size: 0.8rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+    margin-bottom: 24px;
+    padding: 6px 14px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-glow);
+    border-radius: 20px;
+  }
+
+  .hero h1 {
+    font-size: clamp(2rem, 5vw, 3.25rem);
+    font-weight: 800;
+    line-height: 1.15;
+    margin: 0 auto 24px;
+    max-width: 900px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e8ecf4 0%, #22d3ee 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p.tagline {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    max-width: 700px;
+    margin: 0 auto;
+  }
+
+  .hero-byline {
+    display: inline-block;
+    margin-top: 28px;
+    padding: 10px 18px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.92rem;
+    color: var(--text-muted);
+  }
+
+  .hero-byline strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .hero-byline .role {
+    color: var(--accent);
+    font-weight: 500;
+    margin-left: 4px;
+  }
+
+  /* ============ SECTIONS ============ */
+  section {
+    padding: 70px 0;
+  }
+
+  section + section {
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .section-header {
+    margin-bottom: 40px;
+  }
+
+  .section-header h2 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+  }
+
+  .section-header .subtitle {
+    color: var(--text-muted);
+    font-size: 1rem;
+    margin: 0;
+    max-width: 700px;
+  }
+
+  /* ============ CONTEXT ============ */
+  .context {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    font-size: 0.97rem;
+    color: var(--text-muted);
+  }
+
+  .context p {
+    margin: 0 0 12px;
+  }
+
+  .context p:last-child {
+    margin-bottom: 0;
+  }
+
+  .context strong {
+    color: var(--text);
+  }
+
+  .context-list {
+    margin: 10px 0 16px;
+    padding-left: 4px;
+    list-style: none;
+  }
+
+  .context-list li {
+    padding: 6px 0 6px 28px;
+    position: relative;
+    color: var(--text-muted);
+  }
+
+  .context-list li::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 16px;
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  .context-list li strong {
+    color: var(--text);
+  }
+
+  .callout {
+    background: rgba(34, 211, 238, 0.08);
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    margin: 18px 0;
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.97rem;
+  }
+
+  .callout strong {
+    color: var(--accent);
+  }
+
+  /* ============ TABLE OPTION LINKS ============ */
+  .opt-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+    transition: opacity 0.2s ease;
+  }
+
+  .opt-link::after {
+    content: " ↗";
+    display: inline-block;
+    margin-left: 2px;
+    font-size: 0.85em;
+  }
+
+  .opt-link:hover {
+    opacity: 0.75;
+    text-decoration: underline;
+  }
+
+  /* ============ COMPANION PROPOSAL NOTE ============ */
+  .companion-note {
+    background: rgba(167, 139, 250, 0.08);
+    border-left: 3px solid var(--purple);
+    padding: 18px 22px;
+    margin-top: 24px;
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+
+  .companion-note strong {
+    color: var(--purple);
+  }
+
+  .companion-note a {
+    color: var(--purple);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .companion-note a:hover {
+    text-decoration: underline;
+  }
+
+  .companion-note a::after {
+    content: " ↗";
+    font-size: 0.85em;
+  }
+
+  /* ============ TABLE ============ */
+  .table-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    overflow-x: auto;
+  }
+
+  .options-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 600px;
+  }
+
+  .options-table th {
+    background: var(--bg-elevated);
+    padding: 14px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .options-table td {
+    padding: 18px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.95rem;
+    vertical-align: top;
+  }
+
+  .options-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .options-table tbody tr {
+    transition: background 0.2s ease;
+  }
+
+  .options-table tbody tr:hover {
+    background: var(--accent-soft);
+  }
+
+  .opt-num {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--accent);
+  }
+
+  .opt-title {
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* ============ PERSPECTIVES ============ */
+  .perspectives {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+  }
+
+  .perspective {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .perspective:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-glow);
+    box-shadow: 0 12px 32px -16px rgba(34, 211, 238, 0.2);
+  }
+
+  .perspective-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .perspective-title .emoji {
+    font-size: 1.5rem;
+  }
+
+  .perspective-body {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin: 0;
+  }
+
+  .perspective-body strong {
+    color: var(--text);
+  }
+
+  /* ============ RANK CARDS ============ */
+  .rank-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+  }
+
+  .rank-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 5px;
+    height: 100%;
+  }
+
+  .rank-card.gold::before { background: linear-gradient(180deg, var(--gold), #f59e0b); }
+  .rank-card.silver::before { background: linear-gradient(180deg, var(--silver), #94a3b8); }
+  .rank-card.bronze::before { background: linear-gradient(180deg, var(--bronze), #92400e); }
+  .rank-card.no-go::before { background: linear-gradient(180deg, var(--red), #b91c1c); }
+
+  .rank-card.gold:hover { border-color: var(--gold); }
+  .rank-card.silver:hover { border-color: var(--silver); }
+  .rank-card.bronze:hover { border-color: var(--bronze); }
+  .rank-card.no-go:hover { border-color: var(--red); }
+
+  .rank-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .rank-medal {
+    font-size: 2.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .rank-info {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .rank-info h3 {
+    margin: 0 0 6px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .rank-info .rank-label {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .rank-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: auto;
+    align-self: center;
+  }
+
+  .rank-badge.recommended {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+
+  .rank-badge.acceptable {
+    background: rgba(203, 213, 225, 0.1);
+    color: var(--silver);
+    border: 1px solid rgba(203, 213, 225, 0.3);
+  }
+
+  .rank-badge.suboptimal {
+    background: rgba(217, 119, 6, 0.15);
+    color: var(--bronze);
+    border: 1px solid rgba(217, 119, 6, 0.4);
+  }
+
+  .rank-badge.reject {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+  }
+
+  .rank-section {
+    margin-top: 22px;
+  }
+
+  .rank-section:first-of-type {
+    margin-top: 0;
+  }
+
+  .rank-section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin: 0 0 12px;
+    font-weight: 700;
+  }
+
+  .rank-card.gold .rank-section-title.accent { color: var(--gold); }
+  .rank-card.silver .rank-section-title.accent { color: var(--silver); }
+  .rank-card.bronze .rank-section-title.accent { color: var(--bronze); }
+  .rank-card.no-go .rank-section-title.accent { color: var(--red); }
+
+  .rank-section p {
+    margin: 0 0 14px;
+    color: var(--text-muted);
+    font-size: 0.97rem;
+  }
+
+  .rank-section p strong {
+    color: var(--text);
+  }
+
+  .rank-list {
+    margin: 8px 0;
+    padding-left: 0;
+    list-style: none;
+  }
+
+  .rank-list li {
+    padding: 8px 0 8px 30px;
+    position: relative;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+
+  .rank-list li.pro::before {
+    content: "✓";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    color: var(--green);
+    font-weight: 800;
+    font-size: 1.1rem;
+  }
+
+  .rank-list li.con::before {
+    content: "✕";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    color: var(--red);
+    font-weight: 800;
+    font-size: 1.05rem;
+  }
+
+  .rank-list li strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ============ TL;DR ============ */
+  .tldr {
+    background:
+      radial-gradient(ellipse at top left, rgba(34, 211, 238, 0.12), transparent 60%),
+      linear-gradient(135deg, rgba(34, 211, 238, 0.06), rgba(167, 139, 250, 0.04));
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    border-radius: 20px;
+    padding: 44px;
+    margin-top: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tldr::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.5), transparent);
+    height: 1px;
+    top: -1px;
+  }
+
+  .tldr-label {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 800;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 14px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+  }
+
+  .tldr h2 {
+    font-size: 1.875rem;
+    margin: 0 0 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .tldr p {
+    margin: 0 0 14px;
+    color: var(--text);
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+
+  .tldr p:last-child {
+    margin-bottom: 0;
+  }
+
+  .tldr strong {
+    color: var(--accent);
+  }
+
+  /* ============ FOOTER ============ */
+  footer {
+    margin-top: 80px;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border-soft);
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.875rem;
+  }
+
+  footer p {
+    margin: 8px 0;
+  }
+
+  footer a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: opacity 0.2s ease;
+  }
+
+  footer a:hover {
+    opacity: 0.8;
+  }
+
+  footer strong {
+    color: var(--text);
+  }
+
+  /* ============ CODE ============ */
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, "Liberation Mono", monospace;
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.86em;
+    color: #c0e6f5;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 768px) {
+    .hero {
+      padding: 60px 16px 50px;
+    }
+    section {
+      padding: 50px 0;
+    }
+    .container {
+      padding: 0 16px;
+    }
+    .options-table th,
+    .options-table td {
+      padding: 12px 10px;
+      font-size: 0.85rem;
+    }
+    .rank-card {
+      padding: 24px;
+    }
+    .tldr {
+      padding: 32px 24px;
+    }
+    .tldr h2 {
+      font-size: 1.5rem;
+    }
+    .rank-badge {
+      margin-left: 0;
+      margin-top: 8px;
+    }
+  }
+
+  /* ============ PRINT ============ */
+  @media print {
+    body {
+      background: white;
+      color: black;
+      background-image: none;
+    }
+    .hero h1 {
+      -webkit-text-fill-color: black;
+      background: none;
+    }
+    .rank-card, .perspective, .table-wrap, .tldr, .context {
+      background: white;
+      border-color: #ccc;
+      page-break-inside: avoid;
+    }
+    .options-table th {
+      background: #f5f5f5;
+      color: #333;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <span class="hero-eyebrow">A Gerrit &amp; JGit maintainer's perspective</span>
+    <h1>JGit Servlet-4 Divergence: Four Maintenance Options Compared</h1>
+    <p class="tagline">Honest ranked assessment of the four approaches to bridging Gerrit stable-3.13's JGit dependency through the jakarta.servlet / Jetty 12 transition.</p>
+    <p class="hero-byline">by <strong>David Ostrovsky</strong><span class="role">— Gerrit &amp; JGit maintainer</span></p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ CONTEXT ============ -->
+  <section>
+    <div class="container">
+      <div class="section-header">
+        <h2>The Problem</h2>
+        <p class="subtitle">Why this question exists in the first place.</p>
+      </div>
+      <div class="context">
+        <p>JGit master has moved to <strong>jakarta.servlet 6.1.0</strong> and <strong>Jetty 12.x</strong>. Gerrit <code>stable-3.13</code> still runs on <strong>javax.servlet 4.0.1</strong> and <strong>Jetty 9.x</strong>, and won't migrate until it ages out of support.</p>
+
+        <p>To support consumers that haven't yet migrated, JGit maintains a special <code>servlet-4</code> branch that tracks master but holds back the jakarta.servlet namespace move and the Jetty 12 bumps — keeping JGit's HTTP/LFS modules (<code>org.eclipse.jgit.http.server</code>, <code>http.test</code>, <code>junit.http</code>, <code>lfs.server</code>, <code>lfs.server.test</code>) on the javax.servlet 4 / Jetty 9.x stack Gerrit needs to compile.</p>
+
+        <div class="callout">
+          <strong>Scope is bounded:</strong> three reverts are the entire set of JGit-side changes needed, and no future additions to the fork are expected.
+        </div>
+
+        <p><strong>Why not consume the <code>servlet-4</code> branch directly?</strong> It's designed exactly for our servlet stack — but it tracks JGit master, which has migrated to <strong>bzlmod</strong>. Gerrit stable-3.13 still uses <strong>WORKSPACE-mode</strong> builds. That single divergence — bzlmod vs WORKSPACE — rules out direct consumption.</p>
+
+        <p><strong>Why <code>stable-7.4</code> + three reverts instead?</strong> stable-7.4 predates JGit's bzlmod migration (still on WORKSPACE, matching Gerrit stable-3.13), so the bzlmod axis requires zero JGit-side work. The three reverts undo the jakarta.servlet / Jetty 12 bumps that stable-7.4 inherits from master — restoring the same javax.servlet 4 / Jetty 9.x stack that the <code>servlet-4</code> branch already provides.</p>
+
+        <p>Once stable-3.13 ages out and aligns on the modern stack, the fork branch goes away entirely.</p>
+
+        <p>Four approaches address that gap. Each parks the divergence in a different place, with different long-term costs.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TABLE ============ -->
+  <section>
+    <div class="container">
+      <div class="section-header">
+        <h2>Four Options at a Glance</h2>
+        <p class="subtitle">Where the divergence lives, who maintains it, and the impact on Gerrit's tree.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="options-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Option</th>
+              <th>Divergence lives in</th>
+              <th>Maintained by</th>
+              <th>Gerrit-tree impact</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="opt-num">1</span></td>
+              <td>
+                <span class="opt-title">http_archive + patches in <code>tools/jgit/</code></span>
+                <a class="opt-link" href="https://gerrit-review.googlesource.com/c/gerrit/+/589501/2" target="_blank" rel="noopener">Gerrit change 589501</a>
+              </td>
+              <td>Gerrit's tree</td>
+              <td>Gerrit team</td>
+              <td><code>tools/jgit/</code> directory + WORKSPACE <code>patches=</code> field</td>
+            </tr>
+            <tr>
+              <td><span class="opt-num">2</span></td>
+              <td>
+                <span class="opt-title">Fork SHA with reverts pre-applied</span>
+                <a class="opt-link" href="https://gerrit-review.googlesource.com/c/gerrit/+/591581/1" target="_blank" rel="noopener">Gerrit change 591581</a>
+              </td>
+              <td>Fork branch on GitHub</td>
+              <td>Gerrit team (rebases on fork)</td>
+              <td>Single WORKSPACE SHA pin</td>
+            </tr>
+            <tr>
+              <td><span class="opt-num">3</span></td>
+              <td>
+                <span class="opt-title">Backport bzlmod to stable-3.13</span>
+                <a class="opt-link" href="https://gerrit-review.googlesource.com/c/gerrit/+/588622" target="_blank" rel="noopener">Gerrit change 588622</a>
+              </td>
+              <td>Gerrit <code>stable-3.13</code> branch (bzlmod backport)</td>
+              <td>Gerrit team</td>
+              <td>Massive — bzlmod backport on a stable branch</td>
+            </tr>
+            <tr>
+              <td><span class="opt-num">4</span></td>
+              <td><span class="opt-title">New <code>servlet-4/stable-7.4</code> upstream branch</span></td>
+              <td>Upstream JGit</td>
+              <td>JGit team (parallel branch maintenance)</td>
+              <td>None</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="companion-note">
+        <strong>Companion proposal for Options 1 &amp; 2:</strong> both approaches remove JGit as a tracked submodule, which regresses Eclipse/IntelliJ source navigation, debugger breakpoints, and <code>git bisect</code> across JGit history — capabilities the submodule layout gave for free. <a href="https://gerrit-review.googlesource.com/c/gerrit/+/591441" target="_blank" rel="noopener">Gerrit change 591441</a> (<em>"Add developer story for build-time-patched JGit workflow"</em>) closes that gap with a documented IDE workflow against the Bazel-materialized JGit source: <code>tools/eclipse/project.py</code> points the generated <code>.classpath</code> entries directly at <code>$(bazel info output_base)/external/jgit</code>, so Eclipse and Bazel read the same physical files. It lands alongside whichever of Options 1 or 2 is accepted.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PERSPECTIVES ============ -->
+  <section>
+    <div class="container">
+      <div class="section-header">
+        <h2>Per-Perspective Views</h2>
+        <p class="subtitle">How the trade-offs shift depending on which hat you're wearing.</p>
+      </div>
+      <div class="perspectives">
+        <div class="perspective">
+          <h3 class="perspective-title"><span class="emoji">🌿</span> JGit Maintainer</h3>
+          <p class="perspective-body">Rejects <strong>Option 4</strong> — parallel <code>servlet-4/stable-7.N</code> branches per Gerrit stable release scale poorly. Merge-up discipline across all of them is real ongoing work that JGit gets no direct value from. Indifferent to Options 1, 2, and 3 (those are Gerrit's problem).</p>
+        </div>
+        <div class="perspective">
+          <h3 class="perspective-title"><span class="emoji">⚙️</span> Gerrit Maintainer</h3>
+          <p class="perspective-body">Rejects <strong>Option 3</strong> — backporting bzlmod to a stable branch is a high-risk infrastructure change on the line you're supposed to be keeping conservative. Stable-3.13 exists <em>to not</em> take large changes. Indifferent-to-favorable on 1, 2, and 4.</p>
+        </div>
+        <div class="perspective">
+          <h3 class="perspective-title"><span class="emoji">🎩</span> Both Hats Together</h3>
+          <p class="perspective-body"><em>This is the position I actually hold — I wear both maintainer hats and have to weigh the trade-offs accordingly.</em> The real choice is between <strong>Options 1 and 2</strong>. Option 3 is out (wrong cost-benefit on a stable branch). Option 4 is out (unfair externality on the JGit team for a problem that's structurally Gerrit's). Which leaves the question: patches in Gerrit's tree, or on a fork branch?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RANKED PREFERENCE ============ -->
+  <section>
+    <div class="container">
+      <div class="section-header">
+        <h2>My Ranked Preference</h2>
+        <p class="subtitle">If I were wearing both maintainer hats, here's how I'd order them — with reasoning.</p>
+      </div>
+
+      <!-- ============ #1 GOLD ============ -->
+      <article class="rank-card gold">
+        <div class="rank-header">
+          <span class="rank-medal">🥇</span>
+          <div class="rank-info">
+            <h3>Fork SHA with Pre-Applied Reverts</h3>
+            <div class="rank-label">Option 2</div>
+          </div>
+          <span class="rank-badge recommended">Recommended</span>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title accent">Why first</p>
+          <ul class="rank-list">
+            <li class="pro"><strong>Semantic cleanness.</strong> Gerrit consumes JGit <em>as code</em>, full stop. The divergence isn't a Gerrit concern; it's a fork-of-JGit concern. The boundary between projects is honest.</li>
+            <li class="pro"><strong>Smallest Gerrit-tree footprint.</strong> One WORKSPACE SHA. No <code>tools/jgit/</code> directory, no <code>patches=</code> declaration, no <code>patch_tool</code>, no patch-file maintenance. Looking at Gerrit's tree, you can't tell JGit is patched at all — and arguably you shouldn't be able to.</li>
+            <li class="pro"><strong>Established precedent.</strong> The <code>rules_nodejs</code> approach on stable-3.14 already does exactly this pattern and is accepted. Consistency with an existing precedent is itself a maintainer value.</li>
+            <li class="pro"><strong>Maintenance shape is identical to Option 1.</strong> Three reverts to rebase per JGit SHA bump. Same work, different location — and the location matters.</li>
+          </ul>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title">Concerns to address before landing</p>
+          <ul class="rank-list">
+            <li class="con"><strong>Fork ownership.</strong> Currently a personal fork. For long-term sustainability the fork should sit under a Gerrit-team org, not an individual's GitHub account. If the maintainer leaves, the fork shouldn't disappear with them.</li>
+            <li class="con"><strong>Discoverability.</strong> A developer reading WORKSPACE sees a SHA pointing at <code>eclipse-jgit/jgit</code> via fork-network reachability, with no obvious signal that "this is patched." A short comment in WORKSPACE pointing at the fork branch mitigates this.</li>
+            <li class="con"><strong>End-of-life cleanup.</strong> When stable-3.13 ages out, who removes the fork? Needs to be on the same checklist as removing <code>tools/jgit/</code>.</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- ============ #2 SILVER ============ -->
+      <article class="rank-card silver">
+        <div class="rank-header">
+          <span class="rank-medal">🥈</span>
+          <div class="rank-info">
+            <h3>Build-Time Patches in <code>tools/jgit/</code></h3>
+            <div class="rank-label">Option 1</div>
+          </div>
+          <span class="rank-badge acceptable">Defensible Fallback</span>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title accent">Why second</p>
+          <p>Strictly auditable — patches are in Gerrit's git history, reviewable by Gerrit reviewers as part of normal change review, no external dependency. If the fork option had to be ruled out (org policy, fork-hosting concerns, supply-chain considerations), this is the next-best choice.</p>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title">Why not first</p>
+          <ul class="rank-list">
+            <li class="con">Creates the "is this Gerrit code or JGit code?" tree confusion. The patches live in Gerrit's repository but they're not Gerrit's code.</li>
+            <li class="con">Build-time patching is a real ongoing maintenance vector — <code>patch_tool</code> quirks, patch context drift, WORKSPACE hunk stripping. Every WORKSPACE bump requires a patch refresh PR.</li>
+            <li class="con">The directory persists indefinitely in Gerrit's tree. Death by a thousand small things.</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- ============ #3 BRONZE ============ -->
+      <article class="rank-card bronze">
+        <div class="rank-header">
+          <span class="rank-medal">🥉</span>
+          <div class="rank-info">
+            <h3>New JGit Upstream Branch (<code>servlet-4/stable-7.4</code>)</h3>
+            <div class="rank-label">Option 4</div>
+          </div>
+          <span class="rank-badge suboptimal">Ideal but Unfair</span>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title accent">Why third</p>
+          <p>Cleanest in the abstract — divergence lives where it semantically belongs, on the project that knows JGit best. No Gerrit-side patches at all. Reviewable on JGit's own gerrit. Standard "maintenance branch" pattern that the open-source ecosystem understands well.</p>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title">Why not first</p>
+          <ul class="rank-list">
+            <li class="con"><strong>Externalises the cost onto the JGit team</strong> for a problem that's structurally a Gerrit-stable-line-mismatch concern. JGit doesn't gain anything from carrying <code>servlet-4/stable-7.4</code>; only Gerrit's old stable lines benefit.</li>
+            <li class="con"><strong>Scales badly.</strong> Every Gerrit stable line that needs this gets its own <code>servlet-4/stable-7.N</code> branch with merge-up discipline. Per-consumer maintenance branches don't compose.</li>
+            <li class="con">Asking another project to take on maintenance for our backwards-compat needs is poor citizenship unless absolutely necessary.</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- ============ #4 NO-GO ============ -->
+      <article class="rank-card no-go">
+        <div class="rank-header">
+          <span class="rank-medal">🚫</span>
+          <div class="rank-info">
+            <h3>Backport bzlmod to stable-3.13</h3>
+            <div class="rank-label">Option 3</div>
+          </div>
+          <span class="rank-badge reject">Reject</span>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title accent">Why last</p>
+          <p>Wrong cost-benefit on a stable branch. Stable-3.13 exists to be conservative — to receive security fixes and minor bumps, not infrastructure overhauls. Backporting bzlmod is the kind of change that historically causes regressions you don't catch for months.</p>
+        </div>
+
+        <div class="rank-section">
+          <p class="rank-section-title">Compounding problems</p>
+          <ul class="rank-list">
+            <li class="con">Even with bzlmod, JGit's <code>servlet-4</code> branch tracks <em>master</em>, so stable-3.13 would pick up master-only feature drift in a stable dependency graph. Version-skew risk is real even if CI is green today.</li>
+            <li class="con">Per-stable-branch backports scale poorly — 3.13 today, 3.12 tomorrow, the precedent compounds.</li>
+            <li class="con">If bzlmod really needed to land on stable-3.13, that should be an independent decision driven by tooling reasons — <em>not</em> a JGit-divergence workaround.</li>
+          </ul>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ TL;DR ============ -->
+  <section>
+    <div class="container">
+      <div class="tldr">
+        <span class="tldr-label">TL;DR</span>
+        <h2>Pick Option 2 — Fork SHA with pre-applied reverts.</h2>
+        <p>It's structurally cleanest, precedent-aligned with <code>rules_nodejs</code> on stable-3.14, and bounded by stable-3.13's lifecycle.</p>
+        <p><strong>Option 1</strong> is a defensible fallback if there's an objection to the fork model. <strong>Option 4</strong> would be the platonic ideal but is unfair to JGit. <strong>Option 3</strong> is overkill.</p>
+        <p>The one mitigation worth landing alongside Option 2: <strong>move the fork to a team-owned org</strong> (not a personal account) and <strong>add a single explanatory comment in WORKSPACE</strong> pointing at the fork branch. Those two things turn "ad-hoc personal patch" into "documented Gerrit-team-maintained variant" — which is what makes Option 2 sustainable across maintainer turnover.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>By <strong>David Ostrovsky</strong> — Gerrit &amp; JGit maintainer.</p>
+    <p>Comments and corrections welcome on the corresponding Gerrit review thread.</p>
+  </div>
+</footer>
+
+</body>
+</html>
