@@ -725,9 +725,24 @@
         <p class="subtitle">Why this question exists in the first place.</p>
       </div>
       <div class="context">
-        <p>JGit master has moved to <strong>jakarta.servlet 6.1.0</strong> on Jetty 12. Gerrit <code>stable-3.13</code> still runs on <strong>javax.servlet 4.0.1</strong>, and won't migrate until it ages out of support.</p>
-
-        <p>To support consumers that haven't yet migrated, JGit maintains a special <code>servlet-4</code> branch that tracks master but holds back the <strong>jakarta.servlet namespace move</strong> — using <strong>Jetty 12's ee8 compatibility layer</strong> to keep its HTTP/LFS modules (<code>org.eclipse.jgit.http.server</code>, <code>http.test</code>, <code>junit.http</code>, <code>lfs.server</code>, <code>lfs.server.test</code>) on the <code>javax.servlet 4</code> API surface Gerrit needs to compile.</p>
+        <p>JGit master has moved to <strong>jakarta.servlet 6.1.0</strong> on Jetty 12, because of the alignment with the Eclipse project lifecycle.
+           Gerrit <code>stable-3.13</code> still runs on <code>javax.servlet 4.0.1</code>, and is subject to Google's policy on global dependencies updates.
+        </p>
+        <p>The above situation is caused by the fact that JGit and Gerrit belong to two different organizations with different policies:
+        <ul>
+          <li><strong>JGit</strong> is part of the Eclipse Foundation and the global release cycle.
+              Matthias Sohn is the project leader and can approve the dependency updates.
+              Google is one of the committers, but not the owner of the project.</li>
+          <li><strong>Gerrit</Strong> is a project that belongs to Google and follows the company-wide dependencies system.
+              Google has veto on the dependency updates that are used in the <code>*.googlesource.com</code> fork of Gerrit
+              and requires a <code>Library-Compliance</code>* vote from a Googler.</li>
+        </ul>
+        <div class="companion-note">
+          <p><strong>NOTE</strong>: This document refers to the Servlet upgrade issue; however, the same problem also exists for many
+             other dependencies that are misaligned between JGit and Gerrit, and for future security or maintenance
+             dependency bumps.</p>
+        </div>
+          <p>To support consumers that haven't yet migrated, JGit maintains a special <code>servlet-4</code> branch that tracks master but holds back the <strong>jakarta.servlet namespace move</strong> — using <strong>Jetty 12's ee8 compatibility layer</strong> to keep its HTTP/LFS modules (<code>org.eclipse.jgit.http.server</code>, <code>http.test</code>, <code>junit.http</code>, <code>lfs.server</code>, <code>lfs.server.test</code>) on the <code>javax.servlet 4</code> API surface Gerrit needs to compile.</p>
 
         <div class="callout">
           <strong>Scope is bounded:</strong> three reverts are the entire set of JGit-side changes needed, and no future additions to the fork are expected.
